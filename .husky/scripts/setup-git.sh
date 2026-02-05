@@ -33,9 +33,9 @@ else
   rm -rf .git
 fi
 
-# Initialize new repository
+# Initialize new repository with main as default branch
 echo -e "${GREEN}Initializing new git repository...${NC}"
-git init
+git init -b main
 
 # Create initial commit
 echo -e "${GREEN}Creating initial commit...${NC}"

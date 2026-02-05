@@ -112,6 +112,42 @@ Branch protection requires a GitHub Team plan (paid). If on free plan:
 
 This is a GitHub limitation, not a strategy issue.
 
+### Problem: Setup script fails with "pathspec 'main' did not match"
+
+**Symptom**: Running `pnpm run git:setup` fails with error:
+```
+error: pathspec 'main' did not match any file(s) known to git
+ELIFECYCLE  Command failed with exit code 1.
+```
+
+**Root Cause**: Git's default branch name is `master` (pre-Git 3.0), but our scripts expect `main`. When `git init` runs without the `-b main` flag, it creates a `master` branch instead.
+
+**Solution**:
+```bash
+# If the setup script failed, you're likely on the staging branch with master as the other branch
+# Check current state:
+git branch -a
+
+# Rename master to main:
+git checkout master
+git branch -m master main
+
+# Continue with remote setup manually if needed:
+git remote add origin git@github.com:username/repo-name.git
+git push -u origin main --force
+git push -u origin staging --force
+```
+
+**Prevention**: The setup script has been updated to use `git init -b main` which explicitly creates `main` as the initial branch name. If you still encounter this:
+```bash
+# Configure git globally to use main as default
+git config --global init.defaultBranch main
+```
+
+**Note**: This was a real issue encountered during setup (Feb 2026).
+
+---
+
 ### Problem: Setup script fails to push to remote
 
 **Symptom**: `pnpm run git:setup` completes locally but fails during remote push
@@ -654,7 +690,116 @@ git push --force
 
 ## Known Gotchas
 
-### Gotcha 1: Squash merge loses commit metadata
+### Gotcha 1: Direct commits on release branches are NOT allowed
+
+**The rule**: Per strategy3.md: "CRITICAL: No direct commits on release branches - only merge from feature"
+
+**What happened**: During workflow execution, we accidentally committed directly on a release branch instead of committing on the feature branch and using `git:sync-feature`.
+
+**Why it's a problem**:
+- Breaks the isolation strategy
+- Changes bypass feature branch review
+- Makes it harder to track what came from where
+
+**Recovery** (what we did):
+```bash
+# On release branch, undo the commit but keep changes
+git reset --soft HEAD~1
+git restore --staged <files>
+git stash
+
+# Switch to feature and apply
+git checkout feature/CU-xxx-description
+git stash pop
+git add . && git commit -m "your message"
+
+# Back to release, sync from feature
+git checkout release/CU-xxx-description
+pnpm run git:sync-feature
+```
+
+**TODO - Needs Enforcement**: Add a `pre-commit` hook that blocks commits on release branches:
+```bash
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+if echo "$BRANCH" | grep -qE '^release/'; then
+  echo "ERROR: Direct commits on release branches are not allowed!"
+  echo "Commit on your feature branch, then run: pnpm run git:sync-feature"
+  exit 1
+fi
+```
+
+**Note**: This was a real mistake during workflow execution (Feb 2026).
+
+---
+
+### Gotcha 2: git:release does NOT sync your feature branch first
+
+**Misconception**: Developers may assume `git:release` automatically syncs their feature branch with main before creating the release.
+
+**What actually happens**:
+1. `git:release` fetches and pulls latest main
+2. Creates release branch FROM main
+3. Merges feature INTO release
+
+**The problem**: If your feature branch is out of sync with main, you may hit merge conflicts at step 3 (during release creation) instead of handling them earlier in your feature branch.
+
+**Best practice**: Always run `git:sync` on your feature branch before `git:release`:
+```bash
+# On feature branch
+pnpm run git:sync       # Merge main into feature, resolve conflicts here
+pnpm run git:release    # Now release creation will merge cleanly
+```
+
+**Why this matters**: Resolving conflicts in your feature branch is safer - you can test that everything still works. Resolving conflicts during release creation means less time for testing before UAT.
+
+**Note**: Discovered during workflow documentation (Feb 2026).
+
+---
+
+### Gotcha: git:release does NOT push the branch to remote
+
+**Misconception**: After running `git:release`, developers may expect the release branch to exist on GitHub.
+
+**What actually happens**:
+- `git:release` creates the release branch locally only
+- It does NOT push to origin
+
+**Why this can be confusing**: You might think you need to manually run `git push -u origin release/...` before creating a PR.
+
+**Good news**: `git:to-staging` handles this automatically! It runs `git push -u origin $CURRENT_BRANCH` before creating the PR.
+
+**So just run**:
+```bash
+pnpm run git:release      # Creates local release branch
+pnpm run git:to-staging   # Pushes AND creates PR (no manual push needed)
+```
+
+**Potential improvement**: `git:release` could optionally push the branch, or at least print a message clarifying that `git:to-staging` will handle it.
+
+**Note**: Discovered during workflow execution (Feb 2026).
+
+---
+
+### Gotcha: git:sync-feature does NOT push to remote
+
+**What happens**: After running `git:sync-feature`, the script tells you to manually push:
+```
+Next steps:
+  1. Push the updated release branch:
+     git push origin release/CU-xxx-description
+```
+
+**The issue**: This is an extra manual step that could be automated.
+
+**Potential improvement**: `git:sync-feature` should automatically push after the merge, similar to how other scripts handle remote operations. Or `git:to-staging` should be smart enough to detect unpushed commits.
+
+**Current workaround**: Just run `git:to-staging` after `git:sync-feature` - it will push all commits.
+
+**Note**: Discovered during workflow execution (Feb 2026).
+
+---
+
+### Gotcha: Squash merge loses commit metadata
 
 **Issue**: If using squash merge, commit messages with task IDs get squashed
 
@@ -672,24 +817,35 @@ git push --force
 # PR title is what matters for tagging (contains [major|minor|patch])
 ```
 
-### Gotcha 2: Force push warnings in setup script are expected
+### Gotcha 3: Setup script uses force push unnecessarily
 
-**Warning you'll see**:
+**The problem**: The setup script prompts with scary warnings:
 ```
 WARNING: This will FORCE PUSH to the remote repository!
 All existing remote history will be replaced.
 ```
 
-**This is intentional!** The setup script uses force push to ensure:
-- Clean slate with no existing history
-- No conflicts with what might be on remote
+**Why force push is unnecessary**:
+- If you're pushing to a fresh/empty remote, regular `git push` works fine
+- If you're adapting an existing repo, you don't want to destroy history
+- Force push (`--force`) is only needed when rewriting history (rebasing, amending)
 
-**It's safe because**:
-- You're setting up a fresh repository
-- There should be no production history to lose
-- Confirm both times if you're uncomfortable
+**What you should do instead**:
+```bash
+# Regular push works for new branches
+git push -u origin main
+git push -u origin staging
 
-### Gotcha 3: Task ID pattern must match exactly
+# Only use --force if you intentionally rewrote history
+```
+
+**TODO - Needs Fix**: The setup script should use regular push by default and only offer force push as an explicit "nuclear option" for truly starting fresh.
+
+**Note**: Discovered during workflow setup (Feb 2026). We successfully pushed without --force.
+
+---
+
+### Gotcha 4: Task ID pattern must match exactly
 
 **Valid pattern**: `CU-[a-z0-9]+-[a-z0-9-]+`
 
@@ -710,7 +866,7 @@ All existing remote history will be replaced.
 
 **Solution**: Always use lowercase alphanumeric for task ID part
 
-### Gotcha 4: Staging auto-syncs - don't manually merge after main merge
+### Gotcha 5: Staging auto-syncs - don't manually merge after main merge
 
 **Problem**: You merge to main, then manually merge main → staging
 
@@ -724,7 +880,7 @@ All existing remote history will be replaced.
 - Workflow automatically syncs main → staging
 - Never manually push to staging (pre-push hook blocks anyway)
 
-### Gotcha 5: Deleting branches locally after PR merge is manual
+### Gotcha 6: Deleting branches locally after PR merge is manual
 
 **Issue**: After PR merge, the release branch is deleted on GitHub but still exists locally
 
