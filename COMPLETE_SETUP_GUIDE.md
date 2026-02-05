@@ -179,10 +179,31 @@ pnpm run git:setup
 
 1. Check if you're in a git repository
 2. If existing, prompt to delete and reinitialize (destructive operation)
-3. Create an initial commit
-4. Create the `staging` branch
-5. Ensure `main` is the default branch
-6. Prompt to set up the remote and force push (requires confirmation)
+3. Initialize with `git init -b main` (explicitly creates `main` as default branch)
+4. Create an initial commit
+5. Create the `staging` branch
+6. Prompt to set up the remote and push branches
+
+**Important: `git init -b main` is required**
+
+The setup script uses `git init -b main` to ensure the default branch is `main`. Without the `-b main` flag, Git creates `master` as the default branch, which causes the script to fail with:
+```
+error: pathspec 'main' did not match any file(s) known to git
+```
+
+If you encounter this error:
+```bash
+git branch -m master main   # Rename master to main
+```
+
+**Remote Setup: No force push needed**
+
+For fresh repositories, regular push is sufficient:
+```bash
+git push -u origin main      # Regular push works fine
+git push -u origin staging   # No --force needed
+```
+Force push (`--force`) is only needed when rewriting existing history, not for initial setup.
 
 **Expected output:**
 
@@ -227,6 +248,145 @@ ls -la .husky/
 pnpm run | grep git:
 # Should list all git:* scripts
 ```
+
+---
+
+## Git Workflow Commands Reference
+
+This section explains each pnpm git command and what it does under the hood.
+
+### pnpm run git:setup
+
+**Purpose**: Initial repository setup
+
+**What it does** (runs `.husky/scripts/setup-git.sh`):
+1. Initializes git with `git init -b main`
+2. Creates initial commit
+3. Creates staging branch from main
+4. Optionally configures remote and pushes branches
+
+**When to use**: Once when first setting up a repository.
+
+---
+
+### pnpm run git:feature {task_id} {description}
+
+**Purpose**: Create a feature branch for new development
+
+**What it does** (runs `.husky/scripts/git-feature.sh`):
+1. Fetches latest from origin
+2. Checks out and pulls latest main
+3. Creates `feature/CU-{task_id}-{description}` branch
+
+**When to use**: Every time you start new work. No need to manually pull main first.
+
+---
+
+### pnpm run git:sync
+
+**Purpose**: Sync feature branch with latest main
+
+**What it does** (runs `.husky/scripts/git-sync.sh`):
+1. Merges `origin/main` into current feature branch with `--no-ff`
+
+**When to use**: Regularly during development to catch integration issues early. **Run before git:release**.
+
+**Requirements**: Must be on a `feature/*` branch.
+
+---
+
+### pnpm run git:release
+
+**Purpose**: Create release branch for UAT testing
+
+**What it does** (runs `.husky/scripts/git-release.sh`):
+1. Fetches and pulls latest main
+2. Creates `release/CU-{task_id}-{description}` from main
+3. Merges feature branch into release with `--no-ff`
+
+**When to use**: When feature is code-complete and ready for UAT.
+
+**Requirements**: Must be on a `feature/*` branch.
+
+**Important**: Does NOT sync feature with main first. Run `git:sync` before this if needed.
+
+---
+
+### pnpm run git:sync-feature
+
+**Purpose**: Sync release branch with feature branch updates
+
+**What it does** (runs `.husky/scripts/git-sync-feature.sh`):
+1. Merges associated feature branch into current release with `--no-ff`
+
+**When to use**: When UAT finds bugs, you fix in feature branch, then sync to release.
+
+**Requirements**: Must be on a `release/*` branch.
+
+---
+
+### pnpm run git:to-staging
+
+**Purpose**: Create PR to staging for UAT
+
+**What it does** (runs `.husky/scripts/git-to-staging.sh`):
+1. Pushes current branch to origin
+2. Creates GitHub PR from current branch to staging
+
+**When to use**: When release/hotfix is ready for UAT testing.
+
+**Requirements**: Must be on `release/*` or `hotfix/*` branch. GitHub CLI must be authenticated.
+
+---
+
+### pnpm run git:ship {major|minor|patch}
+
+**Purpose**: Create PR to main (production)
+
+**What it does** (runs `.husky/scripts/git-ship.sh`):
+1. Pushes current branch to origin
+2. Creates GitHub PR with `[major|minor|patch]` prefix in title
+
+**Parameters**:
+- `major` - Breaking changes
+- `minor` - New features (backwards-compatible)
+- `patch` - Bug fixes
+
+**When to use**: After UAT approval, to deploy to production.
+
+**Requirements**: Must be on `release/*` or `hotfix/*` branch.
+
+---
+
+### pnpm run git:hotfix {task_id} {description}
+
+**Purpose**: Create hotfix branch for urgent production fixes
+
+**What it does** (runs `.husky/scripts/git-hotfix.sh`):
+1. Fetches and pulls latest main
+2. Creates `hotfix/CU-{task_id}-{description}` from main
+
+**When to use**: Critical issues that need to bypass normal feature workflow.
+
+**Typical flow**:
+```bash
+pnpm run git:hotfix {task_id} {description}
+# ... fix and commit ...
+pnpm run git:to-staging   # Quick UAT if possible
+pnpm run git:ship patch   # Deploy to production
+```
+
+---
+
+### pnpm run git:status
+
+**Purpose**: Show current branch status and available commands
+
+**What it does** (runs `.husky/scripts/git-status.sh`):
+1. Displays current branch type
+2. Shows available commands for that branch type
+
+**When to use**: Anytime to see where you are and what's available.
 
 ---
 
@@ -869,10 +1029,16 @@ Congratulations! Your Release Branch Isolation Strategy is now configured. Here'
 
 2. **Create your first feature**:
    ```bash
-   pnpm run git:feature YOUR-TASK-ID your-feature-name
+   pnpm run git:feature {task_id} {description}
    ```
+   This command automatically:
+   - Fetches from origin
+   - Checks out and pulls latest main
+   - Creates your feature branch from the updated main
 
-3. **Make commits using conventional format**:
+   No need to manually pull main first!
+
+3. **Make commits** (conventional format NOT enforced on feature branches):
    ```bash
    git commit -m "feat(CU-YOUR-TASK-ID): add awesome feature"
    git commit -m "test(CU-YOUR-TASK-ID): add tests"
