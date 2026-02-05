@@ -799,23 +799,26 @@ Next steps:
 
 ---
 
-### Gotcha: Squash merge loses commit metadata
+### Gotcha: GitHub merge settings are repo-wide, not per-branch
 
-**Issue**: If using squash merge, commit messages with task IDs get squashed
+**The strategy document (strategy3.md) says:**
+- release → staging: merge commit (`--no-ff`)
+- release → main: squash merge
 
-**Why it matters**: Loses traceability to the original commits
+**The reality**: GitHub's merge options apply repo-wide, not per-branch. You can't enforce different merge types for different target branches.
 
-**Solution**:
-- Avoid squash merge in this strategy
-- Use merge commits (--no-ff) as configured
-- This preserves individual commit history
+**Practical consideration**: Since `sync-staging.yml` automatically syncs main → staging after every main merge, staging eventually reflects main's history anyway. So using squash for both may be acceptable:
+- Simpler (one merge strategy to remember)
+- Staging is temporary for UAT
+- After main merge, staging syncs to match main
 
-**If you accidentally squash**:
-```bash
-# The metadata is still in the merge commit message
-# But you lose individual commit details
-# PR title is what matters for tagging (contains [major|minor|patch])
-```
+**Recommended GitHub settings:**
+- ✅ Allow squash merging - CHECKED
+- ❌ Allow merge commits - UNCHECKED (or checked if you want the option)
+- ❌ Allow rebase merging - UNCHECKED
+- Default commit message: "Pull request title"
+
+**Note**: Discovered during workflow execution (Feb 2026).
 
 ### Gotcha 3: Setup script uses force push unnecessarily
 
