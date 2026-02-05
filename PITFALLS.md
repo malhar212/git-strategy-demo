@@ -780,6 +780,25 @@ pnpm run git:to-staging   # Pushes AND creates PR (no manual push needed)
 
 ---
 
+### Gotcha: git:sync-feature does NOT push to remote
+
+**What happens**: After running `git:sync-feature`, the script tells you to manually push:
+```
+Next steps:
+  1. Push the updated release branch:
+     git push origin release/CU-xxx-description
+```
+
+**The issue**: This is an extra manual step that could be automated.
+
+**Potential improvement**: `git:sync-feature` should automatically push after the merge, similar to how other scripts handle remote operations. Or `git:to-staging` should be smart enough to detect unpushed commits.
+
+**Current workaround**: Just run `git:to-staging` after `git:sync-feature` - it will push all commits.
+
+**Note**: Discovered during workflow execution (Feb 2026).
+
+---
+
 ### Gotcha: Squash merge loses commit metadata
 
 **Issue**: If using squash merge, commit messages with task IDs get squashed
