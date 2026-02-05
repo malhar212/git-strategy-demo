@@ -1,0 +1,6 @@
+# Only enforce commit message rules on release/*, hotfix/*, and main branches
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+if [ "$BRANCH" = "main" ] || echo "$BRANCH" | grep -qE '^(release|hotfix)/'; then
+  npx --no -- commitlint --edit ${1}
+fi

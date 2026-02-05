@@ -1,0 +1,121 @@
+name: Cleanup Stale Branches
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no actual deletions)'
+        required: false
+        default: 'true'
+        type: boolean
+      days_threshold:
+        description: 'Days of inactivity before considering stale'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find and cleanup stale branches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const dryRun = '${{ inputs.dry_run }}' === 'true' || '${{ github.event_name }}' === 'schedule';
+            const daysThreshold = parseInt('${{ inputs.days_threshold }}' || '30');
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
+
+            console.log(`Mode: ${dryRun ? 'DRY RUN' : 'LIVE'}`);
+            console.log(`Threshold: ${daysThreshold} days (before ${cutoffDate.toISOString()})`);
+            console.log('---');
+
+            // Protected branches that should never be deleted
+            const protectedBranches = ['main', 'staging', 'master', 'develop'];
+
+            // Get all branches
+            const { data: branches } = await github.rest.repos.listBranches({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+
+            const staleBranches = [];
+            const keptBranches = [];
+
+            for (const branch of branches) {
+              // Skip protected branches
+              if (protectedBranches.includes(branch.name)) {
+                continue;
+              }
+
+              // Get the last commit date
+              const { data: commit } = await github.rest.repos.getCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: branch.commit.sha
+              });
+
+              const lastCommitDate = new Date(commit.commit.committer.date);
+
+              // Check if branch is stale
+              if (lastCommitDate < cutoffDate) {
+                staleBranches.push({
+                  name: branch.name,
+                  lastCommit: lastCommitDate.toISOString(),
+                  daysOld: Math.floor((new Date() - lastCommitDate) / (1000 * 60 * 60 * 24))
+                });
+              } else {
+                keptBranches.push({
+                  name: branch.name,
+                  lastCommit: lastCommitDate.toISOString()
+                });
+              }
+            }
+
+            console.log(`\nFound ${staleBranches.length} stale branches:`);
+            for (const branch of staleBranches) {
+              console.log(`  - ${branch.name} (${branch.daysOld} days old)`);
+            }
+
+            if (!dryRun && staleBranches.length > 0) {
+              console.log('\nDeleting stale branches...');
+              for (const branch of staleBranches) {
+                try {
+                  await github.rest.git.deleteRef({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ref: `heads/${branch.name}`
+                  });
+                  console.log(`  ✅ Deleted: ${branch.name}`);
+                } catch (error) {
+                  console.log(`  ❌ Failed to delete ${branch.name}: ${error.message}`);
+                }
+              }
+            }
+
+            // Create summary
+            const summary = `
+            ## Branch Cleanup Report
+
+            **Mode:** ${dryRun ? '🔍 Dry Run' : '🗑️ Live Deletion'}
+            **Threshold:** ${daysThreshold} days of inactivity
+
+            ### Stale Branches (${staleBranches.length})
+            ${staleBranches.length > 0 ? staleBranches.map(b => `- \`${b.name}\` - ${b.daysOld} days old`).join('\n') : 'None found'}
+
+            ### Active Branches (${keptBranches.length})
+            ${keptBranches.slice(0, 10).map(b => `- \`${b.name}\``).join('\n')}
+            ${keptBranches.length > 10 ? `\n...and ${keptBranches.length - 10} more` : ''}
+            `;
+
+            await core.summary.addRaw(summary).write();

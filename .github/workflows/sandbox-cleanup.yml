@@ -1,0 +1,93 @@
+# TEMPLATE: PR Sandbox Cleanup
+# This workflow cleans up sandbox environments when PRs are closed
+# Requires: Kubernetes cluster access
+#
+# To use this template:
+# 1. Configure KUBECONFIG secret
+# 2. Customize the cleanup steps for your infrastructure
+
+name: Cleanup PR Sandbox
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [staging]
+
+# Uncomment to enable:
+# env:
+#   KUBECONFIG: ${{ secrets.KUBECONFIG }}
+
+jobs:
+  cleanup-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Template Notice
+        run: |
+          echo "=================================================="
+          echo "TEMPLATE: This workflow is a template and disabled by default"
+          echo "To enable sandbox cleanup:"
+          echo "1. Configure KUBECONFIG secret"
+          echo "2. Uncomment the relevant sections"
+          echo "=================================================="
+
+      # Uncomment below to enable sandbox cleanup:
+      #
+      # - name: Generate sandbox name
+      #   id: sandbox
+      #   run: |
+      #     PR_NUMBER=${{ github.event.pull_request.number }}
+      #     SANDBOX_NAME="pr-${PR_NUMBER}"
+      #     echo "name=${SANDBOX_NAME}" >> $GITHUB_OUTPUT
+      #     echo "namespace=sandbox-${SANDBOX_NAME}" >> $GITHUB_OUTPUT
+      #
+      # - name: Delete namespace
+      #   run: |
+      #     if kubectl get namespace ${{ steps.sandbox.outputs.namespace }} 2>/dev/null; then
+      #       kubectl delete namespace ${{ steps.sandbox.outputs.namespace }} --wait=false
+      #       echo "Deleted namespace: ${{ steps.sandbox.outputs.namespace }}"
+      #     else
+      #       echo "Namespace ${{ steps.sandbox.outputs.namespace }} not found, skipping"
+      #     fi
+      #
+      # - name: Delete container images
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       const sandboxName = '${{ steps.sandbox.outputs.name }}';
+      #
+      #       try {
+      #         // List package versions
+      #         const { data: versions } = await github.rest.packages.getAllPackageVersionsForPackageOwnedByOrg({
+      #           package_type: 'container',
+      #           package_name: context.repo.repo,
+      #           org: context.repo.owner
+      #         });
+      #
+      #         // Find and delete sandbox image
+      #         const sandboxVersion = versions.find(v =>
+      #           v.metadata?.container?.tags?.includes(sandboxName)
+      #         );
+      #
+      #         if (sandboxVersion) {
+      #           await github.rest.packages.deletePackageVersionForOrg({
+      #             package_type: 'container',
+      #             package_name: context.repo.repo,
+      #             org: context.repo.owner,
+      #             package_version_id: sandboxVersion.id
+      #           });
+      #           console.log(`Deleted image version: ${sandboxName}`);
+      #         }
+      #       } catch (error) {
+      #         console.log(`Note: Could not clean up images: ${error.message}`);
+      #       }
+      #
+      # - name: Comment PR
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       await github.rest.issues.createComment({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         issue_number: context.payload.pull_request.number,
+      #         body: '🧹 Sandbox environment has been cleaned up.'
+      #       });

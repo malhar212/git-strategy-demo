@@ -1,0 +1,58 @@
+name: Fix PR Target
+
+on:
+  pull_request:
+    types: [opened]
+    branches: [main]
+
+jobs:
+  suggest-correct-target:
+    runs-on: ubuntu-latest
+    if: startsWith(github.head_ref, 'release/') || startsWith(github.head_ref, 'hotfix/')
+    steps:
+      - name: Check if should go to staging first
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const source = context.payload.pull_request.head.ref;
+            const prNumber = context.payload.pull_request.number;
+
+            // Check if this release/hotfix has already been merged to staging
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              head: `${context.repo.owner}:${source}`,
+              base: 'staging'
+            });
+
+            const mergedToStaging = pulls.some(pr => pr.merged_at !== null);
+
+            if (!mergedToStaging && source.startsWith('release/')) {
+              // Add a comment suggesting staging first
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `## Workflow Reminder
+
+            This release branch hasn't been merged to \`staging\` yet.
+
+            **Recommended workflow:**
+            1. First, create a PR from \`${source}\` to \`staging\` for UAT testing
+            2. After UAT approval, create a PR from \`${source}\` to \`main\`
+
+            If you intentionally want to skip staging (e.g., urgent hotfix), you can proceed with this PR.
+
+            ---
+            *This is an automated reminder based on the Release Branch Isolation strategy.*`
+              });
+
+              // Add a label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                labels: ['skip-staging']
+              });
+            }

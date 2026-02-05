@@ -1,0 +1,24 @@
+{
+  "name": "git-strategy-demo",
+  "version": "1.0.0",
+  "description": "Demonstration of Release Branch Isolation Strategy",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "prepare": "husky",
+    "git:feature": "bash .husky/scripts/git-feature.sh",
+    "git:sync": "bash .husky/scripts/git-sync.sh",
+    "git:release": "bash .husky/scripts/git-release.sh",
+    "git:to-staging": "bash .husky/scripts/git-to-staging.sh",
+    "git:sync-feature": "bash .husky/scripts/git-sync-feature.sh",
+    "git:ship": "bash .husky/scripts/git-ship.sh",
+    "git:hotfix": "bash .husky/scripts/git-hotfix.sh",
+    "git:status": "bash .husky/scripts/git-status.sh",
+    "git:setup": "bash .husky/scripts/setup-git.sh"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0"
+  }
+}
