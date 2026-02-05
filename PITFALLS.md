@@ -807,18 +807,56 @@ Next steps:
 
 **The reality**: GitHub's merge options apply repo-wide, not per-branch. You can't enforce different merge types for different target branches.
 
-**Practical consideration**: Since `sync-staging.yml` automatically syncs main → staging after every main merge, staging eventually reflects main's history anyway. So using squash for both may be acceptable:
-- Simpler (one merge strategy to remember)
-- Staging is temporary for UAT
-- After main merge, staging syncs to match main
+**CRITICAL: DO NOT squash merge to staging!**
+
+We discovered squashing to staging causes conflicts when updating the PR:
+
+1. Squash merge release → staging (creates new squashed commit)
+2. Add more commits to feature, sync to release
+3. Try to update staging PR → **CONFLICT** (divergent histories)
+
+**Why**: Squash creates new commit with different SHA. Original commits no longer in staging's history.
+
+**Multiple releases on staging:**
+- With merge commits: Features can be merged sequentially to staging
+- With squash: Each release creates divergent history → guaranteed conflicts
+
+**Recommended approach: Use `gh` CLI for merging PRs**
+
+Since GitHub settings are repo-wide, use CLI to enforce correct merge type:
+
+```bash
+# For staging PRs (merge commit - preserves history, allows updates)
+gh pr merge <PR_NUMBER> --merge
+
+# For main PRs (squash - clean production history)
+gh pr merge <PR_NUMBER> --squash
+```
+
+**TODO**: Add pnpm scripts for merging:
+- `pnpm run git:merge-staging <PR>` - merges with `--merge`
+- `pnpm run git:merge-main <PR>` - merges with `--squash`
 
 **Recommended GitHub settings:**
-- ✅ Allow squash merging - CHECKED
-- ❌ Allow merge commits - UNCHECKED (or checked if you want the option)
+- ✅ Allow merge commits - CHECKED (for staging)
+- ✅ Allow squash merging - CHECKED (for main)
 - ❌ Allow rebase merging - UNCHECKED
 - Default commit message: "Pull request title"
 
-**Note**: Discovered during workflow execution (Feb 2026).
+**Recovery from accidental squash to staging:**
+```bash
+# Close the conflicting PR
+# Reset staging to main
+git checkout staging
+git reset --hard origin/main
+git push --force origin staging
+
+# Create new PR from release to staging
+pnpm run git:to-staging
+# Then merge with: gh pr merge <PR> --merge
+```
+
+**Note**: Discovered during workflow execution (Feb 2026). Squash to staging broke our ability to update the PR!
 
 ### Gotcha 3: Setup script uses force push unnecessarily
 
