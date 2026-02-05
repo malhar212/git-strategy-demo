@@ -690,7 +690,49 @@ git push --force
 
 ## Known Gotchas
 
-### Gotcha 1: git:release does NOT sync your feature branch first
+### Gotcha 1: Direct commits on release branches are NOT allowed
+
+**The rule**: Per strategy3.md: "CRITICAL: No direct commits on release branches - only merge from feature"
+
+**What happened**: During workflow execution, we accidentally committed directly on a release branch instead of committing on the feature branch and using `git:sync-feature`.
+
+**Why it's a problem**:
+- Breaks the isolation strategy
+- Changes bypass feature branch review
+- Makes it harder to track what came from where
+
+**Recovery** (what we did):
+```bash
+# On release branch, undo the commit but keep changes
+git reset --soft HEAD~1
+git restore --staged <files>
+git stash
+
+# Switch to feature and apply
+git checkout feature/CU-xxx-description
+git stash pop
+git add . && git commit -m "your message"
+
+# Back to release, sync from feature
+git checkout release/CU-xxx-description
+pnpm run git:sync-feature
+```
+
+**TODO - Needs Enforcement**: Add a `pre-commit` hook that blocks commits on release branches:
+```bash
+BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null)
+if echo "$BRANCH" | grep -qE '^release/'; then
+  echo "ERROR: Direct commits on release branches are not allowed!"
+  echo "Commit on your feature branch, then run: pnpm run git:sync-feature"
+  exit 1
+fi
+```
+
+**Note**: This was a real mistake during workflow execution (Feb 2026).
+
+---
+
+### Gotcha 2: git:release does NOT sync your feature branch first
 
 **Misconception**: Developers may assume `git:release` automatically syncs their feature branch with main before creating the release.
 
