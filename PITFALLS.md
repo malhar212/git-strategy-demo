@@ -756,7 +756,31 @@ pnpm run git:release    # Now release creation will merge cleanly
 
 ---
 
-### Gotcha 2: Squash merge loses commit metadata
+### Gotcha: git:release does NOT push the branch to remote
+
+**Misconception**: After running `git:release`, developers may expect the release branch to exist on GitHub.
+
+**What actually happens**:
+- `git:release` creates the release branch locally only
+- It does NOT push to origin
+
+**Why this can be confusing**: You might think you need to manually run `git push -u origin release/...` before creating a PR.
+
+**Good news**: `git:to-staging` handles this automatically! It runs `git push -u origin $CURRENT_BRANCH` before creating the PR.
+
+**So just run**:
+```bash
+pnpm run git:release      # Creates local release branch
+pnpm run git:to-staging   # Pushes AND creates PR (no manual push needed)
+```
+
+**Potential improvement**: `git:release` could optionally push the branch, or at least print a message clarifying that `git:to-staging` will handle it.
+
+**Note**: Discovered during workflow execution (Feb 2026).
+
+---
+
+### Gotcha: Squash merge loses commit metadata
 
 **Issue**: If using squash merge, commit messages with task IDs get squashed
 
