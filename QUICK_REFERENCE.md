@@ -6,7 +6,8 @@ Fast lookup guide for developers familiar with the Release Branch Isolation work
 
 | Command | Purpose | Usage |
 |---------|---------|-------|
-| `pnpm run git:feature <id> <desc>` | Create feature branch from main | `pnpm run git:feature abc123 user-login` |
+| `pnpm run git:setup` | Initialize repository (creates main + staging) | Initial setup only |
+| `pnpm run git:feature <id> <desc>` | Create feature branch (auto-pulls main first) | `pnpm run git:feature doc1 workflow-docs` |
 | `pnpm run git:sync` | Sync feature with main | Run from feature branch |
 | `pnpm run git:release` | Create release branch from feature | Run from feature branch |
 | `pnpm run git:sync-feature` | Sync release with feature updates | Run from release branch |
@@ -14,12 +15,13 @@ Fast lookup guide for developers familiar with the Release Branch Isolation work
 | `pnpm run git:ship <bump>` | Create PR to main | `pnpm run git:ship minor` |
 | `pnpm run git:hotfix <id> <desc>` | Create hotfix from main | `pnpm run git:hotfix def456 fix-crash` |
 | `pnpm run git:status` | Show branch status & available commands | Run anytime |
-| `pnpm run git:setup` | Initialize repository | Initial setup only |
 
 **Parameters:**
 - `<id>`: ClickUp task ID (without CU- prefix; automatically added)
 - `<desc>`: Description in kebab-case
 - `<bump>`: One of `major`, `minor`, or `patch`
+
+**Note:** Remote operations (fetch/pull/push) require SSH passphrase entry.
 
 ---
 
@@ -43,6 +45,8 @@ hotfix/CU-def456-fix-login-crash
 ## Commit Message Format
 
 **Required on:** `main`, `release/*`, `hotfix/*` branches only
+**NOT enforced on:** `feature/*` branches (free-form commits allowed)
+
 **Format (Conventional Commits):**
 
 ```
@@ -114,12 +118,14 @@ Must include version bump indicator at the start:
 
 Start feature development:
 ```bash
-pnpm run git:feature abc123 add-login
+# Creates feature/CU-{task_id}-{description}
+# Automatically fetches and pulls latest main first
+pnpm run git:feature {task_id} {description}
 
-# Develop...
+# Develop... (conventional commits NOT enforced on feature branches)
 git add .
-git commit -m "feat(CU-abc123): implement login form"
-git push origin feature/CU-abc123-add-login
+git commit -m "feat: implement login form"
+git push origin feature/CU-{task_id}-{description}
 ```
 
 Keep feature updated with main:

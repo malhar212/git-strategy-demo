@@ -179,10 +179,31 @@ pnpm run git:setup
 
 1. Check if you're in a git repository
 2. If existing, prompt to delete and reinitialize (destructive operation)
-3. Create an initial commit
-4. Create the `staging` branch
-5. Ensure `main` is the default branch
-6. Prompt to set up the remote and force push (requires confirmation)
+3. Initialize with `git init -b main` (explicitly creates `main` as default branch)
+4. Create an initial commit
+5. Create the `staging` branch
+6. Prompt to set up the remote and push branches
+
+**Important: `git init -b main` is required**
+
+The setup script uses `git init -b main` to ensure the default branch is `main`. Without the `-b main` flag, Git creates `master` as the default branch, which causes the script to fail with:
+```
+error: pathspec 'main' did not match any file(s) known to git
+```
+
+If you encounter this error:
+```bash
+git branch -m master main   # Rename master to main
+```
+
+**Remote Setup: No force push needed**
+
+For fresh repositories, regular push is sufficient:
+```bash
+git push -u origin main      # Regular push works fine
+git push -u origin staging   # No --force needed
+```
+Force push (`--force`) is only needed when rewriting existing history, not for initial setup.
 
 **Expected output:**
 
@@ -869,10 +890,16 @@ Congratulations! Your Release Branch Isolation Strategy is now configured. Here'
 
 2. **Create your first feature**:
    ```bash
-   pnpm run git:feature YOUR-TASK-ID your-feature-name
+   pnpm run git:feature {task_id} {description}
    ```
+   This command automatically:
+   - Fetches from origin
+   - Checks out and pulls latest main
+   - Creates your feature branch from the updated main
 
-3. **Make commits using conventional format**:
+   No need to manually pull main first!
+
+3. **Make commits** (conventional format NOT enforced on feature branches):
    ```bash
    git commit -m "feat(CU-YOUR-TASK-ID): add awesome feature"
    git commit -m "test(CU-YOUR-TASK-ID): add tests"
