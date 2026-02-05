@@ -112,6 +112,42 @@ Branch protection requires a GitHub Team plan (paid). If on free plan:
 
 This is a GitHub limitation, not a strategy issue.
 
+### Problem: Setup script fails with "pathspec 'main' did not match"
+
+**Symptom**: Running `pnpm run git:setup` fails with error:
+```
+error: pathspec 'main' did not match any file(s) known to git
+ELIFECYCLE  Command failed with exit code 1.
+```
+
+**Root Cause**: Git's default branch name is `master` (pre-Git 3.0), but our scripts expect `main`. When `git init` runs without the `-b main` flag, it creates a `master` branch instead.
+
+**Solution**:
+```bash
+# If the setup script failed, you're likely on the staging branch with master as the other branch
+# Check current state:
+git branch -a
+
+# Rename master to main:
+git checkout master
+git branch -m master main
+
+# Continue with remote setup manually if needed:
+git remote add origin git@github.com:username/repo-name.git
+git push -u origin main --force
+git push -u origin staging --force
+```
+
+**Prevention**: The setup script has been updated to use `git init -b main` which explicitly creates `main` as the initial branch name. If you still encounter this:
+```bash
+# Configure git globally to use main as default
+git config --global init.defaultBranch main
+```
+
+**Note**: This was a real issue encountered during setup (Feb 2026).
+
+---
+
 ### Problem: Setup script fails to push to remote
 
 **Symptom**: `pnpm run git:setup` completes locally but fails during remote push
