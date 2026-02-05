@@ -690,7 +690,31 @@ git push --force
 
 ## Known Gotchas
 
-### Gotcha 1: Squash merge loses commit metadata
+### Gotcha 1: git:release does NOT sync your feature branch first
+
+**Misconception**: Developers may assume `git:release` automatically syncs their feature branch with main before creating the release.
+
+**What actually happens**:
+1. `git:release` fetches and pulls latest main
+2. Creates release branch FROM main
+3. Merges feature INTO release
+
+**The problem**: If your feature branch is out of sync with main, you may hit merge conflicts at step 3 (during release creation) instead of handling them earlier in your feature branch.
+
+**Best practice**: Always run `git:sync` on your feature branch before `git:release`:
+```bash
+# On feature branch
+pnpm run git:sync       # Merge main into feature, resolve conflicts here
+pnpm run git:release    # Now release creation will merge cleanly
+```
+
+**Why this matters**: Resolving conflicts in your feature branch is safer - you can test that everything still works. Resolving conflicts during release creation means less time for testing before UAT.
+
+**Note**: Discovered during workflow documentation (Feb 2026).
+
+---
+
+### Gotcha 2: Squash merge loses commit metadata
 
 **Issue**: If using squash merge, commit messages with task IDs get squashed
 
@@ -708,24 +732,35 @@ git push --force
 # PR title is what matters for tagging (contains [major|minor|patch])
 ```
 
-### Gotcha 2: Force push warnings in setup script are expected
+### Gotcha 3: Setup script uses force push unnecessarily
 
-**Warning you'll see**:
+**The problem**: The setup script prompts with scary warnings:
 ```
 WARNING: This will FORCE PUSH to the remote repository!
 All existing remote history will be replaced.
 ```
 
-**This is intentional!** The setup script uses force push to ensure:
-- Clean slate with no existing history
-- No conflicts with what might be on remote
+**Why force push is unnecessary**:
+- If you're pushing to a fresh/empty remote, regular `git push` works fine
+- If you're adapting an existing repo, you don't want to destroy history
+- Force push (`--force`) is only needed when rewriting history (rebasing, amending)
 
-**It's safe because**:
-- You're setting up a fresh repository
-- There should be no production history to lose
-- Confirm both times if you're uncomfortable
+**What you should do instead**:
+```bash
+# Regular push works for new branches
+git push -u origin main
+git push -u origin staging
 
-### Gotcha 3: Task ID pattern must match exactly
+# Only use --force if you intentionally rewrote history
+```
+
+**TODO - Needs Fix**: The setup script should use regular push by default and only offer force push as an explicit "nuclear option" for truly starting fresh.
+
+**Note**: Discovered during workflow setup (Feb 2026). We successfully pushed without --force.
+
+---
+
+### Gotcha 4: Task ID pattern must match exactly
 
 **Valid pattern**: `CU-[a-z0-9]+-[a-z0-9-]+`
 
@@ -746,7 +781,7 @@ All existing remote history will be replaced.
 
 **Solution**: Always use lowercase alphanumeric for task ID part
 
-### Gotcha 4: Staging auto-syncs - don't manually merge after main merge
+### Gotcha 5: Staging auto-syncs - don't manually merge after main merge
 
 **Problem**: You merge to main, then manually merge main → staging
 
@@ -760,7 +795,7 @@ All existing remote history will be replaced.
 - Workflow automatically syncs main → staging
 - Never manually push to staging (pre-push hook blocks anyway)
 
-### Gotcha 5: Deleting branches locally after PR merge is manual
+### Gotcha 6: Deleting branches locally after PR merge is manual
 
 **Issue**: After PR merge, the release branch is deleted on GitHub but still exists locally
 
